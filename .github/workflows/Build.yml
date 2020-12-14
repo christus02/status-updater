@@ -1,0 +1,23 @@
+name: Go
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Docker build
+      run: docker build -t status-patcher:latest .
+
+    - name: Docker run
+      run: docker run -dt --name status-patcher -e SERVICE_NAME="test-service" -e SERVICE_NAMESPACE="default" -e EXTERNAL_ENDPOINT_TYPE_ANNOTATION="status.service.com/endpoint-type" -e ENDPOINT_ANNOTATION="status.service.com/endpoint" status-patcher:latest
