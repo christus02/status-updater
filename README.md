@@ -72,7 +72,7 @@ spec:
       serviceAccountName: status-updater
       containers:
         - name: status-updater
-          image: "raghulc/status-patcher:v1.0"
+          image: "raghulc/status-patcher:v=2.0"
           # Specify ENV variables if a custom annotation is needed
           # See previous section for explanation
           imagePullPolicy: Always
