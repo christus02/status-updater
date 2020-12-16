@@ -1,15 +1,17 @@
 # Controller to Update the LoadBalancer Status of a Service
 
-This controller updates the `Service.Status.LoadBalancer.Ingress` field based on the Inputs passed to the controller.
+Status Updater is a controller that updates the `Service.Status.LoadBalancer.Ingress` field of a Kubernetes Service. We can choose to annotate a Kubernetes Service where we specify the IP or the Hostname it needs to be updated with.
 
-The controller accepts inputs through ENV varibles and below are the explanations for the ENV variables.
+When a Kubernetes Service is annotated, this controller parses the annotation and then updates the LoadBalancer Status respectively for that Kubernetes Service.
 
-| ENV Variables          		| Explanation           								       | Possible Values |
-| :-----------------------------------:	| :------------------------------------------------------------------------------------------: | :-------------: |
-| `SERVICE_NAME` 	 		| Name of the Service to watch for                                                             |
-| `SERVICE_NAMESPACE`    		| Namespace of the Service                                                                     |
-| `EXTERNAL_ENDPOINT_TYPE_ANNOTATION`   | Annotation to look for to get the Endpoint type. Example: `status.service.com/endpoint-type` | Values can be `ip`/`hostname`
-| `ENDPOINT_ANNOTATION` 		| Annotation to look for to get the Endpoint. Example: `status.service.com/endpoint`           | Values can be any valid IP or any valid Hostname depending on the `EXTERNAL_ENDPOINT_TYPE_ANNOTATION` | 
+This Controller supports both `hostname` and `ip` updates in `Service.Status.LoadBalancer.Ingress` field.
+
+The annotation for providing the value of the Hostname and IP can also be modified based on user's needs. If not specified, it falls back to the default annotation
+
+| ENV Variable | Defaults (if not specified) | Explanation | 
+|:------------:| :--------------------------:|:-----------:|
+| `LOADBALANCER_IP_ANNOTATION` | `status.service.com/loadbalancer-ip` | Argument to Specify a custom annotation for IP address to be updated |
+| `LOADBALANCER_HOSTNAME_ANNOTATION` | `status.service.com/loadbalancer-hostname` | Argument to Specify a custom annotation for Hostname address to be updated | 
 
 ## Status Updater Controller Deployment
 
@@ -71,15 +73,8 @@ spec:
       containers:
         - name: status-updater
           image: "raghulc/status-patcher:v1.0"
-          env:
-          - name: "SERVICE_NAME"
-            value: "cpx-service"
-          - name: "SERVICE_NAMESPACE"
-            value: "default"
-          - name: "EXTERNAL_ENDPOINT_TYPE_ANNOTATION"
-            value: "status.service.com/endpoint-type"
-          - name: "ENDPOINT_ANNOTATION"
-            value: "status.service.com/endpoint"
+          # Specify ENV variables if a custom annotation is needed
+          # See previous section for explanation
           imagePullPolicy: Always
 ```
 
@@ -91,8 +86,7 @@ kind: Service
 metadata:
   name: cpx-service
   annotations:
-    status.service.com/endpoint-type: hostname
-    status.service.com/endpoint: "cpx.status-update.com"
+    status.service.com/loadbalancer-hostname: "cpx.status-update.com"
   labels:
     app: cpx-service
 spec:
@@ -109,3 +103,10 @@ spec:
     app: cpx-ingress
 ```
 
+### Annotate a Service using `kubectl`
+
+`kubectl annotate service cpx-service status.service.com/loadbalancer-hostname="new-hostname.abc.com" --overwrite`
+
+**Note:** To delete an existing IP or Hostname, just clear the respective annotation.
+
+`kubectl annotate service cpx-service status.service.com/loadbalancer-hostname= --overwrite`

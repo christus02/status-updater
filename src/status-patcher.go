@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -10,19 +11,24 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+
 	//"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/rest"
 	"os"
+
+	"k8s.io/client-go/rest"
 )
 
-var SERVICE_NAME = os.Getenv("SERVICE_NAME")
-var SERVICE_NAMESPACE = os.Getenv("SERVICE_NAMESPACE")
-var EXTERNAL_ENDPOINT_TYPE_ANNOTATION = os.Getenv("EXTERNAL_ENDPOINT_TYPE_ANNOTATION")
-var ENDPOINT_ANNOTATION = os.Getenv("ENDPOINT_ANNOTATION")
-var ENDPOINT = ""
-var ENDPOINT_TYPE = "hostname"
+var LOADBALANCER_IP_ANNOTATION = GetEnvWithFallback("LOADBALANCER_IP_ANNOTATION", "status.service.com/loadbalancer-ip")
+var LOADBALANCER_HOSTNAME_ANNOTATION = GetEnvWithFallback("LOADBALANCER_HOSTNAME_ANNOTATION", "status.service.com/loadbalancer-hostname")
 
 var clientset *kubernetes.Clientset
+
+func GetEnvWithFallback(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
 
 func InitWatcher() {
 
@@ -56,69 +62,86 @@ func InitWatcher() {
 
 func onAdd(obj interface{}) {
 	svc := obj.(*corev1.Service)
-	if svc.ObjectMeta.Name == SERVICE_NAME && svc.ObjectMeta.Namespace == SERVICE_NAMESPACE {
-		endpointValue, ok := svc.ObjectMeta.Annotations[ENDPOINT_ANNOTATION]
-		endpointTypeValue, typeOk := svc.ObjectMeta.Annotations[EXTERNAL_ENDPOINT_TYPE_ANNOTATION]
-		if ok && typeOk {
-			ENDPOINT = endpointValue
-			ENDPOINT_TYPE = endpointTypeValue
-			klog.Infof("Service: %s, Namespace: %s, ENDPOINT: %s, ENDPOINT TYPE: %s", SERVICE_NAME, SERVICE_NAMESPACE, ENDPOINT, ENDPOINT_TYPE)
-			copiedSvc := svc.DeepCopy()
-			if ENDPOINT_TYPE == "hostname" {
-				klog.Info("Updating LoadBalancer Status for Endpoint Hostname: ", ENDPOINT)
-				copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{Hostname: ENDPOINT}}
-			} else if ENDPOINT_TYPE == "ip" {
-				klog.Info("Updating LoadBalancer Status for Endpoint IP: ", ENDPOINT)
-				copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: ENDPOINT}}
-			}
-			res, err := clientset.CoreV1().Services(SERVICE_NAMESPACE).UpdateStatus(context.TODO(), copiedSvc, metav1.UpdateOptions{FieldManager: "christus-controller"})
-			if err != nil {
-				klog.Error(err)
-			} else {
-				klog.Info("Successfully Updated LoadBalancer Status")
-				klog.Info("Response Dump: ", res)
-			}
-
+	service_name := svc.ObjectMeta.Name
+	service_namespace := svc.ObjectMeta.Namespace
+	loadbalancerIPValue, ipOk := svc.ObjectMeta.Annotations[LOADBALANCER_IP_ANNOTATION]
+	loadbalancerHostnameValue, hostnameOk := svc.ObjectMeta.Annotations[LOADBALANCER_HOSTNAME_ANNOTATION]
+	copiedSvc := svc.DeepCopy()
+	if hostnameOk && ipOk {
+		klog.Infof("Service: %s, Namespace: %s, Hostname : %s, IP: %s", service_name, service_namespace, loadbalancerHostnameValue, loadbalancerIPValue)
+		copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{Hostname: loadbalancerHostnameValue}, {IP: loadbalancerIPValue}}
+		res, err := clientset.CoreV1().Services(service_namespace).UpdateStatus(context.TODO(), copiedSvc, metav1.UpdateOptions{FieldManager: "christus-controller"})
+		if err != nil {
+			klog.Error(err)
 		} else {
-			klog.Errorf("Service: %s, Namespace: %s, ENDPOINT or ENDPOINT_TYPE is *NOT SPECIFIED*", SERVICE_NAME, SERVICE_NAMESPACE)
+			klog.Info("Successfully Updated LoadBalancer Status")
+			klog.Info("Response Dump: ", res)
 		}
-
+	} else if hostnameOk {
+		klog.Infof("Service: %s, Namespace: %s, Hostname : %s", service_name, service_namespace, loadbalancerHostnameValue)
+		copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{Hostname: loadbalancerHostnameValue}}
+		res, err := clientset.CoreV1().Services(service_namespace).UpdateStatus(context.TODO(), copiedSvc, metav1.UpdateOptions{FieldManager: "christus-controller"})
+		if err != nil {
+			klog.Error(err)
+		} else {
+			klog.Info("Successfully Updated LoadBalancer Status")
+			klog.Info("Response Dump: ", res)
+		}
+	} else if ipOk {
+		klog.Infof("Service: %s, Namespace: %s, IP : %s", service_name, service_namespace, loadbalancerIPValue)
+		copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: loadbalancerIPValue}}
+		res, err := clientset.CoreV1().Services(service_namespace).UpdateStatus(context.TODO(), copiedSvc, metav1.UpdateOptions{FieldManager: "christus-controller"})
+		if err != nil {
+			klog.Error(err)
+		} else {
+			klog.Info("Successfully Updated LoadBalancer Status")
+			klog.Info("Response Dump: ", res)
+		}
 	}
+
 }
 
 func onUpdate(obj interface{}, newObj interface{}) {
 	newSvc := newObj.(*corev1.Service)
-	if newSvc.ObjectMeta.Name == SERVICE_NAME && newSvc.ObjectMeta.Namespace == SERVICE_NAMESPACE {
-		endpointValue, ok := newSvc.ObjectMeta.Annotations[ENDPOINT_ANNOTATION]
-		endpointTypeValue, typeOk := newSvc.ObjectMeta.Annotations[EXTERNAL_ENDPOINT_TYPE_ANNOTATION]
-		if ok && typeOk {
-			ENDPOINT = endpointValue
-			ENDPOINT_TYPE = endpointTypeValue
-			klog.Infof("Service: %s, Namespace: %s, ENDPOINT: %s, ENDPOINT TYPE: %s", SERVICE_NAME, SERVICE_NAMESPACE, ENDPOINT, ENDPOINT_TYPE)
-			copiedSvc := newSvc.DeepCopy()
-			if ENDPOINT_TYPE == "hostname" {
-				klog.Info("Updating LoadBalancer Status for Endpoint Hostname: ", ENDPOINT)
-				copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{Hostname: ENDPOINT}}
-			} else if ENDPOINT_TYPE == "ip" {
-				klog.Info("Updating LoadBalancer Status for Endpoint IP: ", ENDPOINT)
-				copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: ENDPOINT}}
-			}
-			res, err := clientset.CoreV1().Services(SERVICE_NAMESPACE).UpdateStatus(context.TODO(), copiedSvc, metav1.UpdateOptions{FieldManager: "christus-controller"})
-			if err != nil {
-				klog.Error(err)
-			} else {
-				klog.Info("Successfully Updated LoadBalancer Status")
-				klog.Info("Response Dump: ", res)
-			}
-
+	service_name := newSvc.ObjectMeta.Name
+	service_namespace := newSvc.ObjectMeta.Namespace
+	loadbalancerIPValue, ipOk := newSvc.ObjectMeta.Annotations[LOADBALANCER_IP_ANNOTATION]
+	loadbalancerHostnameValue, hostnameOk := newSvc.ObjectMeta.Annotations[LOADBALANCER_HOSTNAME_ANNOTATION]
+	copiedSvc := newSvc.DeepCopy()
+	if hostnameOk && ipOk {
+		klog.Infof("Service: %s, Namespace: %s, Hostname : %s, IP: %s", service_name, service_namespace, loadbalancerHostnameValue, loadbalancerIPValue)
+		copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{Hostname: loadbalancerHostnameValue}, {IP: loadbalancerIPValue}}
+		res, err := clientset.CoreV1().Services(service_namespace).UpdateStatus(context.TODO(), copiedSvc, metav1.UpdateOptions{FieldManager: "christus-controller"})
+		if err != nil {
+			klog.Error(err)
 		} else {
-			klog.Errorf("Service: %s, Namespace: %s, ENDPOINT or ENDPOINT_TYPE is *NOT SPECIFIED*", SERVICE_NAME, SERVICE_NAMESPACE)
+			klog.Info("Successfully Updated LoadBalancer Status")
+			klog.Info("Response Dump: ", res)
 		}
-
+	} else if hostnameOk {
+		klog.Infof("Service: %s, Namespace: %s, Hostname : %s", service_name, service_namespace, loadbalancerHostnameValue)
+		copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{Hostname: loadbalancerHostnameValue}}
+		res, err := clientset.CoreV1().Services(service_namespace).UpdateStatus(context.TODO(), copiedSvc, metav1.UpdateOptions{FieldManager: "christus-controller"})
+		if err != nil {
+			klog.Error(err)
+		} else {
+			klog.Info("Successfully Updated LoadBalancer Status")
+			klog.Info("Response Dump: ", res)
+		}
+	} else if ipOk {
+		klog.Infof("Service: %s, Namespace: %s, IP : %s", service_name, service_namespace, loadbalancerIPValue)
+		copiedSvc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: loadbalancerIPValue}}
+		res, err := clientset.CoreV1().Services(service_namespace).UpdateStatus(context.TODO(), copiedSvc, metav1.UpdateOptions{FieldManager: "christus-controller"})
+		if err != nil {
+			klog.Error(err)
+		} else {
+			klog.Info("Successfully Updated LoadBalancer Status")
+			klog.Info("Response Dump: ", res)
+		}
 	}
-
 }
 
 func main() {
+	klog.Info("***** Status Updater Started *****")
 	InitWatcher()
 }

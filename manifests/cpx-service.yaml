@@ -3,8 +3,8 @@ kind: Service
 metadata:
   name: cpx-service
   annotations:
-    status.service.com/endpoint-type: hostname
-    status.service.com/endpoint: "cpx.status-update.com"
+    status.service.com/loadbalancer-hostname: "cpx.status-update.com"
+    status.service.com/loadbalancer-ip: "192.168.1.1"
   labels:
     app: cpx-service
 spec:

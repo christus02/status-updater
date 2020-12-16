@@ -11,4 +11,7 @@ RUN go get "k8s.io/client-go/tools/clientcmd"
 RUN go get "k8s.io/apimachinery/pkg/apis/meta/v1"
 RUN go get "k8s.io/apimachinery/pkg/types"
 
-CMD ["go", "run", "./status-patcher.go"]
+RUN go build -o status-updater
+RUN rm status-patcher.go
+
+CMD ["./status-updater"]

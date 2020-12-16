@@ -54,14 +54,11 @@ spec:
       serviceAccountName: status-updater
       containers:
         - name: status-updater
-          image: "raghulc/status-patcher:v1.0"
+          image: "raghulc/status-patcher:v2.0"
           env:
-          - name: "SERVICE_NAME"
-            value: "cpx-service"
-          - name: "SERVICE_NAMESPACE"
-            value: "default"
-          - name: "EXTERNAL_ENDPOINT_TYPE_ANNOTATION"
-            value: "status.service.com/endpoint-type"
-          - name: "ENDPOINT_ANNOTATION"
-            value: "status.service.com/endpoint"
+          # These ENV vars are optional
+          - name: "LOADBALANCER_HOSTNAME_ANNOTATION"
+            value: "status.service.com/loadbalancer-hostname"
+          - name: "LOADBALANCER_IP_ANNOTATION"
+            value: "status.service.com/loadbalancer-ip"
           imagePullPolicy: Always
